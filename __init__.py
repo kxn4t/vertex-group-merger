@@ -4,6 +4,7 @@ from bpy.props import (
     StringProperty,
     CollectionProperty,
     PointerProperty,
+    EnumProperty,
 )
 from bpy.types import Operator, Panel, PropertyGroup, UIList, Object, VertexGroup
 from typing import List, Dict, Set, Optional, Any
@@ -63,6 +64,7 @@ class MESH_OT_merge_vertex_groups(Operator):
             target_group,
             settings.maintain_total_weight,
             settings.keep_source_groups,
+            settings.operation_mode,
         )
 
         # Update list
@@ -77,6 +79,7 @@ class MESH_OT_merge_vertex_groups(Operator):
         target_group: VertexGroup,
         maintain_total_weight: bool,
         keep_source_groups: bool,
+        operation_mode: str,
     ) -> None:
         """
         Merge source vertex groups into target group
@@ -87,6 +90,7 @@ class MESH_OT_merge_vertex_groups(Operator):
             target_group: Target vertex group to merge into
             maintain_total_weight: Flag to keep total weight ≤ 1.0
             keep_source_groups: Flag to keep source groups after merging
+            operation_mode: 'ADD' or 'SUBTRACT' operation mode
         """
         # Pre-compute set of vertices to process
         vertices_to_process: Set[int] = self._collect_vertices_to_process(
@@ -95,12 +99,15 @@ class MESH_OT_merge_vertex_groups(Operator):
 
         # Calculate weights for each vertex
         vertex_weights: Dict[int, float] = self._calculate_vertex_weights(
-            vertices_to_process, source_groups, target_group, maintain_total_weight
+            vertices_to_process,
+            source_groups,
+            target_group,
+            maintain_total_weight,
+            operation_mode,
         )
 
         # Apply new weights to target group
-        for vertex_index, weight in vertex_weights.items():
-            target_group.add([vertex_index], weight, "REPLACE")
+        removed_vertices = self._apply_weights_to_target(target_group, vertex_weights)
 
         # Save source group names before deletion
         source_names: List[str] = [group.name for group in source_groups]
@@ -110,10 +117,23 @@ class MESH_OT_merge_vertex_groups(Operator):
             for group in reversed(source_groups):
                 obj.vertex_groups.remove(group)
 
-        # Report success
-        success_message = f"{', '.join(source_names)} merged into {target_group.name}"
+        # Report success with operation-specific message
+        if operation_mode == "ADD":
+            success_message = (
+                f"{', '.join(source_names)} merged into {target_group.name}"
+            )
+        else:  # SUBTRACT
+            success_message = (
+                f"{', '.join(source_names)} subtracted from {target_group.name}"
+            )
+            if removed_vertices > 0:
+                success_message += (
+                    f" ({removed_vertices} vertices removed with zero weight)"
+                )
+
         if keep_source_groups:
             success_message += " (source groups kept)"
+
         self.report({"INFO"}, success_message)
 
     def _collect_vertices_to_process(
@@ -147,6 +167,7 @@ class MESH_OT_merge_vertex_groups(Operator):
         source_groups: List[VertexGroup],
         target_group: VertexGroup,
         maintain_total_weight: bool,
+        operation_mode: str,
     ) -> Dict[int, float]:
         """Calculate new weights for vertices"""
         vertex_weights: Dict[int, float] = {}
@@ -159,20 +180,57 @@ class MESH_OT_merge_vertex_groups(Operator):
             except RuntimeError:
                 pass
 
-            # Add weights from source groups
+            # Add or subtract weights from source groups based on operation mode
             for source_group in source_groups:
                 try:
-                    weight += source_group.weight(vertex_index)
+                    source_weight = source_group.weight(vertex_index)
+                    if operation_mode == "ADD":
+                        weight += source_weight
+                    elif operation_mode == "SUBTRACT":
+                        weight -= source_weight
                 except RuntimeError:
                     pass
 
-            # Clamp weight if needed
+            # Ensure weight is within valid range
+            weight = max(0.0, weight)
             if maintain_total_weight and weight > 1.0:
                 weight = 1.0
 
             vertex_weights[vertex_index] = weight
 
         return vertex_weights
+
+    def _apply_weights_to_target(
+        self,
+        target_group: VertexGroup,
+        vertex_weights: Dict[int, float],
+    ) -> int:
+        """
+        Apply calculated weights to target group and remove zero-weight vertices
+
+        Args:
+            target_group: Target vertex group to apply weights to
+            vertex_weights: Dictionary of vertex indices and their calculated weights
+
+        Returns:
+            Number of vertices removed due to zero weight
+        """
+        removed_vertices = 0
+
+        for vertex_index, weight in vertex_weights.items():
+            if weight > 0.0:
+                target_group.add([vertex_index], weight, "REPLACE")
+            else:
+                # Remove vertices with zero weight from the group
+                # This only happens in SUBTRACT mode or when maintain_total_weight clamps to 0
+                try:
+                    target_group.remove([vertex_index])
+                    removed_vertices += 1
+                except RuntimeError:
+                    # Vertex wasn't in the group, this is normal - ignore the error
+                    pass
+
+        return removed_vertices
 
 
 class VertexGroupItem(PropertyGroup):
@@ -283,6 +341,20 @@ class VertexGroupMergerSettings(PropertyGroup):
         default=False,
     )
 
+    operation_mode: EnumProperty(
+        name="Operation Mode",
+        description="How to merge vertex groups",
+        items=[
+            ("ADD", "Add", "Add source groups to target"),
+            (
+                "SUBTRACT",
+                "Subtract",
+                "Subtract source groups from target (vertices with zero weight will be removed)",
+            ),
+        ],
+        default="ADD",
+    )
+
 
 def update_source_groups(self, context) -> None:
     """Update source groups list"""
@@ -351,6 +423,10 @@ class VIEW3D_PT_vertex_group_merger(Panel):
             "vertex_groups",
             text="Target Group",
         )
+
+        # Operation mode selection
+        row = layout.row()
+        row.prop(settings, "operation_mode", expand=True)
 
         # Source groups list
         box = layout.box()
