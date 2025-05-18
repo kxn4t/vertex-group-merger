@@ -58,7 +58,11 @@ class MESH_OT_merge_vertex_groups(Operator):
 
         # Perform merge operation
         self.merge_vertex_groups(
-            obj, source_groups, target_group, settings.maintain_total_weight
+            obj,
+            source_groups,
+            target_group,
+            settings.maintain_total_weight,
+            settings.keep_source_groups,
         )
 
         # Update list
@@ -72,6 +76,7 @@ class MESH_OT_merge_vertex_groups(Operator):
         source_groups: List[VertexGroup],
         target_group: VertexGroup,
         maintain_total_weight: bool,
+        keep_source_groups: bool,
     ) -> None:
         """
         Merge source vertex groups into target group
@@ -81,6 +86,7 @@ class MESH_OT_merge_vertex_groups(Operator):
             source_groups: List of source vertex groups to merge
             target_group: Target vertex group to merge into
             maintain_total_weight: Flag to keep total weight ≤ 1.0
+            keep_source_groups: Flag to keep source groups after merging
         """
         # Pre-compute set of vertices to process
         vertices_to_process: Set[int] = self._collect_vertices_to_process(
@@ -99,14 +105,16 @@ class MESH_OT_merge_vertex_groups(Operator):
         # Save source group names before deletion
         source_names: List[str] = [group.name for group in source_groups]
 
-        # Remove source groups
-        for group in reversed(source_groups):
-            obj.vertex_groups.remove(group)
+        # Remove source groups (only if keep_source_groups is False)
+        if not keep_source_groups:
+            for group in reversed(source_groups):
+                obj.vertex_groups.remove(group)
 
         # Report success
-        self.report(
-            {"INFO"}, f"{', '.join(source_names)} merged into {target_group.name}"
-        )
+        success_message = f"{', '.join(source_names)} merged into {target_group.name}"
+        if keep_source_groups:
+            success_message += " (source groups kept)"
+        self.report({"INFO"}, success_message)
 
     def _collect_vertices_to_process(
         self, obj: Object, source_groups: List[VertexGroup], target_group: VertexGroup
@@ -269,6 +277,12 @@ class VertexGroupMergerSettings(PropertyGroup):
         default=False,
     )
 
+    keep_source_groups: BoolProperty(
+        name="Keep Source Groups",
+        description="Keep source groups after merging (do not delete them)",
+        default=False,
+    )
+
 
 def update_source_groups(self, context) -> None:
     """Update source groups list"""
@@ -358,6 +372,9 @@ class VIEW3D_PT_vertex_group_merger(Panel):
         # Options
         row = layout.row()
         row.prop(settings, "maintain_total_weight")
+
+        row = layout.row()
+        row.prop(settings, "keep_source_groups")
 
         # Merge button
         row = layout.row()
