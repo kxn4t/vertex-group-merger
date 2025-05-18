@@ -12,7 +12,7 @@ from typing import List, Dict, Set, Optional, Any
 bl_info = {
     "name": "Vertex Group Merger",
     "author": "kxn4t",
-    "version": (0, 1, 0),
+    "version": (0, 2, 0),
     "blender": (3, 6, 0),
     "location": "View3D > Edit Panel > Vertex Group Merger",
     "description": "Merge multiple vertex groups into a target group",
