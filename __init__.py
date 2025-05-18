@@ -12,7 +12,7 @@ from typing import List, Dict, Set, Optional, Any
 bl_info = {
     "name": "Vertex Group Merger",
     "author": "kxn4t",
-    "version": (0, 2, 0),
+    "version": (0, 2, 1),
     "blender": (3, 6, 0),
     "location": "View3D > Edit Panel > Vertex Group Merger",
     "description": "Merge multiple vertex groups into a target group",
@@ -264,7 +264,7 @@ class MESH_UL_merge_source_groups(UIList):
         is_checked: bool = item.use
         icon_value: str = "CHECKBOX_HLT" if is_checked else "CHECKBOX_DEHLT"
         row.prop(item, "use", text="", icon=icon_value, emboss=False)
-        row.label(text=item.name)
+        row.label(text=item.name, translate=False)
 
 
 # List selection handler
