@@ -12,12 +12,22 @@ from typing import List, Dict, Set, Optional, Any
 bl_info = {
     "name": "Vertex Group Merger",
     "author": "kxn4t",
-    "version": (0, 2, 1),
+    "version": (0, 3, 0),
     "blender": (3, 6, 0),
     "location": "View3D > Edit Panel > Vertex Group Merger",
     "description": "Merge multiple vertex groups into a target group",
     "category": "Mesh",
 }
+
+# Global state for range selection to avoid Blender's property modification restrictions
+_range_selection_state = {
+    "last_clicked_index": -1,
+    "prev_active_object": None,
+}
+
+# Tracking for UI updates
+_last_object_id = None
+_last_target_group = ""
 
 
 class MESH_OT_merge_vertex_groups(Operator):
@@ -254,6 +264,9 @@ class MESH_UL_merge_source_groups(UIList):
         active_propname,
         index: int,
     ) -> None:
+        global _range_selection_state
+        settings = context.scene.vertex_group_merger
+
         if self.layout_type not in {"DEFAULT", "COMPACT"}:
             layout.alignment = "CENTER"
             layout.prop(item, "use", text="")
@@ -261,67 +274,153 @@ class MESH_UL_merge_source_groups(UIList):
 
         # Default layout handling
         row = layout.row()
+
+        # Range selection mode visual feedback using global state
+        if (
+            settings.range_selection_mode
+            and _range_selection_state["last_clicked_index"] == index
+        ):
+            # Highlight last clicked item
+            row.alert = True
+
         is_checked: bool = item.use
         icon_value: str = "CHECKBOX_HLT" if is_checked else "CHECKBOX_DEHLT"
         row.prop(item, "use", text="", icon=icon_value, emboss=False)
         row.label(text=item.name, translate=False)
 
 
-# List selection handler
-class MESH_OT_select_source_group_list_item(Operator):
-    """Handle selection in the source group list"""
+class MESH_OT_apply_range_selection(Operator):
+    """Apply range selection safely"""
 
-    bl_idname = "mesh.select_source_group_list_item"
-    bl_label = "Select Source Group List Item"
+    bl_idname = "mesh.apply_range_selection"
+    bl_label = "Apply Range Selection"
     bl_options = {"REGISTER", "UNDO", "INTERNAL"}
 
+    start_index: bpy.props.IntProperty()
+    end_index: bpy.props.IntProperty()
+    target_state: BoolProperty()
+
     def execute(self, context) -> Set[str]:
-        obj: Object = context.active_object
         settings = context.scene.vertex_group_merger
+        start_idx = min(self.start_index, self.end_index)
+        end_idx = max(self.start_index, self.end_index)
 
-        # Get current selected item index
-        index: int = settings.active_source_index
+        # Set flag to prevent callback recursion
+        settings.updating_range = True
 
-        if index < 0 or index >= len(settings.source_groups):
-            return {"FINISHED"}
-
-        selected_name: str = settings.source_groups[index].name
-
-        # Find that group in standard list and make it active
-        for i, vg in enumerate(obj.vertex_groups):
-            if vg.name == selected_name:
-                obj.vertex_groups.active_index = i
-                break
+        try:
+            # Safely update items in range
+            for i in range(start_idx, end_idx + 1):
+                if i < len(settings.source_groups):
+                    settings.source_groups[i].use = self.target_state
+        finally:
+            # Always reset flag
+            settings.updating_range = False
 
         return {"FINISHED"}
 
 
+class MESH_OT_update_source_groups_list(Operator):
+    """Update source groups list safely"""
+
+    bl_idname = "mesh.update_source_groups_list"
+    bl_label = "Update Source Groups List"
+    bl_options = {"REGISTER", "UNDO", "INTERNAL"}
+
+    def execute(self, context) -> Set[str]:
+        # Reset range selection state and update source groups list
+        global _range_selection_state
+        _range_selection_state["last_clicked_index"] = -1
+        update_source_groups(self, context)
+        return {"FINISHED"}
+
+
+def handle_range_selection(current_item, context) -> None:
+    """Handle range selection logic using global state"""
+    global _range_selection_state
+    settings = context.scene.vertex_group_merger
+
+    # Get current clicked item index
+    current_index = -1
+    for i, item in enumerate(settings.source_groups):
+        if item.name == current_item.name:
+            current_index = i
+            break
+
+    if current_index == -1:
+        return
+
+    # Execute range selection if last clicked index exists and is different
+    if (
+        _range_selection_state["last_clicked_index"] != -1
+        and _range_selection_state["last_clicked_index"] != current_index
+    ):
+        # Use operator to safely apply range selection
+        bpy.ops.mesh.apply_range_selection(
+            start_index=_range_selection_state["last_clicked_index"],
+            end_index=current_index,
+            target_state=current_item.use,
+        )
+        # Reset start position after completing range selection
+        _range_selection_state["last_clicked_index"] = -1
+    else:
+        # Update last clicked index only for new start position or same checkbox
+        _range_selection_state["last_clicked_index"] = current_index
+
+
 # Callback when checkbox is changed to update standard list
 def item_use_update(self, context) -> None:
-    """Update standard list when checkbox is changed"""
+    """Update standard list when checkbox is changed - extended for range selection"""
     obj: Optional[Object] = context.active_object
     if not obj or obj.type != "MESH":
         return None
 
-    # Make corresponding group active when checked
-    if not self.use:
+    settings = context.scene.vertex_group_merger
+
+    # Skip if we're currently updating range to prevent recursion
+    if getattr(settings, "updating_range", False):
         return None
 
-    for i, vg in enumerate(obj.vertex_groups):
-        if vg.name == self.name:
-            obj.vertex_groups.active_index = i
-            break
+    # Normal processing
+    if self.use:
+        for i, vg in enumerate(obj.vertex_groups):
+            if vg.name == self.name:
+                obj.vertex_groups.active_index = i
+                break
+
+    # Range selection mode additional processing
+    if settings.range_selection_mode:
+        handle_range_selection(self, context)
 
     return None
+
+
+def active_source_index_update(self, context) -> None:
+    """Update active vertex group when list item is selected"""
+    obj: Optional[Object] = context.active_object
+    if not obj or obj.type != "MESH":
+        return
+
+    settings = context.scene.vertex_group_merger
+    index: int = settings.active_source_index
+
+    if index < 0 or index >= len(settings.source_groups):
+        return
+
+    selected_name: str = settings.source_groups[index].name
+
+    # Find that group in standard list and make it active
+    for i, vg in enumerate(obj.vertex_groups):
+        if vg.name == selected_name:
+            obj.vertex_groups.active_index = i
+            break
 
 
 class VertexGroupMergerSettings(PropertyGroup):
     """Vertex Group Merger Settings"""
 
     source_groups: CollectionProperty(type=VertexGroupItem)
-    active_source_index: bpy.props.IntProperty(
-        update=lambda self, context: bpy.ops.mesh.select_source_group_list_item()
-    )
+    active_source_index: bpy.props.IntProperty(update=active_source_index_update)
 
     target_group: StringProperty(
         name="Target Group",
@@ -355,6 +454,26 @@ class VertexGroupMergerSettings(PropertyGroup):
         default="ADD",
     )
 
+    # Range selection properties
+    range_selection_mode: BoolProperty(
+        name="Range Selection Mode",
+        description="Enable range selection for vertex group checkboxes",
+        default=False,
+        update=lambda self, context: range_selection_mode_update(self, context),
+    )
+
+    last_clicked_index: bpy.props.IntProperty(
+        name="Last Clicked Index",
+        description="Index of the last clicked checkbox",
+        default=-1,
+    )
+
+    updating_range: BoolProperty(
+        name="Updating Range",
+        description="Flag to prevent callback recursion during range updates",
+        default=False,
+    )
+
 
 def update_source_groups(self, context) -> None:
     """Update source groups list"""
@@ -367,6 +486,9 @@ def update_source_groups(self, context) -> None:
     # Clear existing list
     settings.source_groups.clear()
 
+    # Reset range selection state when list is updated
+    settings.last_clicked_index = -1
+
     # Add all vertex groups except current target to the list
     for vg in obj.vertex_groups:
         if vg.name == settings.target_group:
@@ -375,6 +497,31 @@ def update_source_groups(self, context) -> None:
         item = settings.source_groups.add()
         item.name = vg.name
         item.use = False
+
+
+def needs_update(context) -> bool:
+    """Simple check if source groups list needs updating"""
+    global _last_object_id, _last_target_group
+
+    obj = context.active_object
+    if not obj or obj.type != "MESH":
+        return False
+
+    settings = context.scene.vertex_group_merger
+
+    # Check if object or target group changed
+    current_object_id = id(obj)
+    current_target_group = settings.target_group
+
+    if (
+        _last_object_id != current_object_id
+        or _last_target_group != current_target_group
+    ):
+        _last_object_id = current_object_id
+        _last_target_group = current_target_group
+        return True
+
+    return False
 
 
 class VIEW3D_PT_vertex_group_merger(Panel):
@@ -390,19 +537,6 @@ class VIEW3D_PT_vertex_group_merger(Panel):
 
     @classmethod
     def poll(cls, context) -> bool:
-        # Check if active object changed
-        if cls._prev_active_object != context.active_object:
-            cls._prev_active_object = context.active_object
-            # Update vertex group list when active object changes
-            if (
-                context.active_object
-                and context.active_object.type == "MESH"
-                and hasattr(context.active_object, "vertex_groups")
-            ):
-                bpy.app.timers.register(
-                    lambda: update_source_groups(cls, context), first_interval=0.1
-                )
-
         return (
             context.object
             and context.object.type == "MESH"
@@ -410,9 +544,40 @@ class VIEW3D_PT_vertex_group_merger(Panel):
         )
 
     def draw(self, context) -> None:
+        global _range_selection_state
+
         layout = self.layout
         settings = context.scene.vertex_group_merger
         obj: Object = context.active_object
+
+        # Safety check for valid object
+        if not obj or obj.type != "MESH" or not hasattr(obj, "vertex_groups"):
+            layout.label(text="Select a mesh object with vertex groups")
+            return
+
+        # Simple update check and schedule if needed
+        if needs_update(context):
+
+            def timer_update():
+                bpy.ops.mesh.update_source_groups_list()
+                return None
+
+            bpy.app.timers.register(timer_update, first_interval=0.01)
+
+        # Check if active object changed and reset global state
+        if _range_selection_state["prev_active_object"] != obj:
+            _range_selection_state["prev_active_object"] = obj
+            # Reset range selection state for new object
+            _range_selection_state["last_clicked_index"] = -1
+
+            # Reset range selection mode when object changes using timer
+            if settings.range_selection_mode:
+
+                def reset_range_mode():
+                    context.scene.vertex_group_merger.range_selection_mode = False
+                    return None
+
+                bpy.app.timers.register(reset_range_mode, first_interval=0.01)
 
         # Target group selection
         row = layout.row()
@@ -430,6 +595,11 @@ class VIEW3D_PT_vertex_group_merger(Panel):
 
         # Source groups list
         box = layout.box()
+
+        # Range selection mode toggle
+        row = box.row()
+        row.prop(settings, "range_selection_mode", text="Range Selection Mode")
+
         box.label(text="Select Source Groups")
 
         row = box.row()
@@ -444,6 +614,15 @@ class VIEW3D_PT_vertex_group_merger(Panel):
             "active_source_index",
             rows=5,
         )
+
+        # Range selection mode help text
+        if settings.range_selection_mode:
+            help_box = box.box()
+            help_box.label(text="Range Selection Mode Active", icon="INFO")
+            if _range_selection_state["last_clicked_index"] >= 0:
+                help_box.label(text="Click another checkbox to select range")
+            else:
+                help_box.label(text="Click a checkbox to start range selection")
 
         # Options
         row = layout.row()
@@ -468,14 +647,29 @@ class VIEW3D_PT_vertex_group_merger(Panel):
 
 def target_group_update(self, context) -> None:
     """Update source list when target group changes"""
-    update_source_groups(self, context)
+
+    # Schedule list update via timer to avoid draw context issues
+    def timer_update():
+        bpy.ops.mesh.update_source_groups_list()
+        return None
+
+    bpy.app.timers.register(timer_update, first_interval=0.01)
+
+
+def range_selection_mode_update(self, context) -> None:
+    """Reset range selection state when mode is toggled"""
+    global _range_selection_state
+    if not self.range_selection_mode:
+        # Clear range selection state when mode is turned off
+        _range_selection_state["last_clicked_index"] = -1
 
 
 # Class registration/unregistration
 classes: List[Any] = [
     VertexGroupItem,
     MESH_UL_merge_source_groups,
-    MESH_OT_select_source_group_list_item,
+    MESH_OT_update_source_groups_list,
+    MESH_OT_apply_range_selection,
     VertexGroupMergerSettings,
     MESH_OT_merge_vertex_groups,
     VIEW3D_PT_vertex_group_merger,
