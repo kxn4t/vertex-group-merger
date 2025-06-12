@@ -80,6 +80,16 @@ class MESH_OT_merge_vertex_groups(Operator):
         # Update list
         update_source_groups(self, context)
 
+        # Set target group as active to show merge result immediately
+        target_group_index = -1
+        for i, vg in enumerate(obj.vertex_groups):
+            if vg.name == target_group_name:
+                target_group_index = i
+                break
+
+        if target_group_index >= 0:
+            obj.vertex_groups.active_index = target_group_index
+
         return {"FINISHED"}
 
     def merge_vertex_groups(
