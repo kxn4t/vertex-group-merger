@@ -90,6 +90,17 @@ class MESH_OT_merge_vertex_groups(Operator):
         if target_group_index >= 0:
             obj.vertex_groups.active_index = target_group_index
 
+        # Reset range selection mode after merge operation using timer
+        if settings.range_selection_mode:
+
+            def reset_range_mode_after_merge():
+                global _range_selection_state
+                context.scene.vertex_group_merger.range_selection_mode = False
+                _range_selection_state["last_clicked_index"] = -1
+                return None
+
+            bpy.app.timers.register(reset_range_mode_after_merge, first_interval=0.01)
+
         return {"FINISHED"}
 
     def merge_vertex_groups(
