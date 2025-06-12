@@ -8,6 +8,7 @@ You can quickly merge vertex groups without having to set up multiple Vertex Wei
 - **Subtractive Mode**: Subtract weights from source groups from the target group
 - **Weight Control**: Option to maintain total weight ≤ 1.0
 - **Group Preservation**: Option to keep source groups after merging
+- **Range Selection Mode**: Efficiently select multiple vertex groups using range selection
 
 ## How to Use
 1. Select a mesh object with vertex groups
@@ -27,6 +28,23 @@ You can quickly merge vertex groups without having to set up multiple Vertex Wei
 ## Options
 - **Maintain Total Weight ≤ 1.0**: Ensures the final vertex weights don't exceed 1.0
 - **Keep Source Groups**: Preserves source groups after the merge operation (they won't be deleted)
+
+## Range Selection Mode
+Range Selection Mode allows you to efficiently select multiple vertex groups at once.
+
+### How to Use
+1. **Enable Range Selection Mode**: Check the "Range Selection Mode" checkbox above the source groups list
+2. **Select Start Point**: Click the checkbox of the first vertex group in your desired range
+3. **Select End Point**: Click the checkbox of the last vertex group in your desired range
+4. **Result**: All vertex groups between the start and end points will be set to the same state (ON/OFF) as the last clicked checkbox
+
+### Examples
+- **To turn ON a range**: Click Group_01 (OFF→ON), then click Group_05 (OFF→ON). Result: Group_01 through Group_05 will all be turned ON
+- **To turn OFF a range**: Click Group_03 (ON→OFF), then click Group_07 (ON→OFF). Result: Group_03 through Group_07 will all be turned OFF
+
+### Auto-Reset Features
+- **Object Change**: Range Selection Mode is automatically disabled when you select a different object
+- **After Merge**: Range Selection Mode is automatically disabled after completing a merge operation
 
 ## Requirements
 Blender 3.6.0 or higher
