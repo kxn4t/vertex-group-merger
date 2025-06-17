@@ -13,7 +13,7 @@ from .translations import translations_dict
 bl_info = {
     "name": "Vertex Group Merger",
     "author": "kxn4t",
-    "version": (0, 3, 0),
+    "version": (0, 4, 0),
     "blender": (3, 6, 0),
     "location": "View3D > Edit Panel > Vertex Group Merger",
     "description": "Merge multiple vertex groups into a target group",
