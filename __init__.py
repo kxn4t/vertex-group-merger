@@ -8,6 +8,7 @@ from bpy.props import (
 )
 from bpy.types import Operator, Panel, PropertyGroup, UIList, Object, VertexGroup
 from typing import List, Dict, Set, Optional, Any
+from .translations import translations_dict
 
 bl_info = {
     "name": "Vertex Group Merger",
@@ -51,7 +52,9 @@ class MESH_OT_merge_vertex_groups(Operator):
         target_group: Optional[VertexGroup] = obj.vertex_groups.get(target_group_name)
 
         if not target_group:
-            self.report({"ERROR"}, "Target group not found")
+            self.report(
+                {"ERROR"}, bpy.app.translations.pgettext("Target group not found")
+            )
             return {"CANCELLED"}
 
         # Get source groups
@@ -60,7 +63,9 @@ class MESH_OT_merge_vertex_groups(Operator):
         ]
 
         if not source_group_names:
-            self.report({"ERROR"}, "No source groups selected")
+            self.report(
+                {"ERROR"}, bpy.app.translations.pgettext("No source groups selected")
+            )
             return {"CANCELLED"}
 
         source_groups: List[VertexGroup] = [
@@ -149,21 +154,26 @@ class MESH_OT_merge_vertex_groups(Operator):
                 obj.vertex_groups.remove(group)
 
         # Report success with operation-specific message
+        source_list = ", ".join(source_names)
         if operation_mode == "ADD":
-            success_message = (
-                f"{', '.join(source_names)} merged into {target_group.name}"
-            )
+            # Use complete translatable message with placeholders
+            success_message = bpy.app.translations.pgettext(
+                "Groups {source} merged into {target}"
+            ).format(source=source_list, target=target_group.name)
         else:  # SUBTRACT
-            success_message = (
-                f"{', '.join(source_names)} subtracted from {target_group.name}"
-            )
+            success_message = bpy.app.translations.pgettext(
+                "Groups {source} subtracted from {target}"
+            ).format(source=source_list, target=target_group.name)
             if removed_vertices > 0:
-                success_message += (
-                    f" ({removed_vertices} vertices removed with zero weight)"
-                )
+                vertices_msg = bpy.app.translations.pgettext(
+                    "{count} vertices removed with zero weight"
+                ).format(count=removed_vertices)
+                success_message += f" ({vertices_msg})"
 
         if keep_source_groups:
-            success_message += " (source groups kept)"
+            success_message += (
+                f" {bpy.app.translations.pgettext('(source groups kept)')}"
+            )
 
         self.report({"INFO"}, success_message)
 
@@ -573,7 +583,11 @@ class VIEW3D_PT_vertex_group_merger(Panel):
 
         # Safety check for valid object
         if not obj or obj.type != "MESH" or not hasattr(obj, "vertex_groups"):
-            layout.label(text="Select a mesh object with vertex groups")
+            layout.label(
+                text=bpy.app.translations.pgettext(
+                    "Select a mesh object with vertex groups"
+                )
+            )
             return
 
         # Simple update check and schedule if needed
@@ -607,7 +621,7 @@ class VIEW3D_PT_vertex_group_merger(Panel):
             "target_group",
             context.active_object,
             "vertex_groups",
-            text="Target Group",
+            text=bpy.app.translations.pgettext("Target Group"),
         )
 
         # Operation mode selection
@@ -619,9 +633,13 @@ class VIEW3D_PT_vertex_group_merger(Panel):
 
         # Range selection mode toggle
         row = box.row()
-        row.prop(settings, "range_selection_mode", text="Range Selection Mode")
+        row.prop(
+            settings,
+            "range_selection_mode",
+            text=bpy.app.translations.pgettext("Range Selection Mode"),
+        )
 
-        box.label(text="Select Source Groups")
+        box.label(text=bpy.app.translations.pgettext("Select Source Groups"))
 
         row = box.row()
 
@@ -639,11 +657,22 @@ class VIEW3D_PT_vertex_group_merger(Panel):
         # Range selection mode help text
         if settings.range_selection_mode:
             help_box = box.box()
-            help_box.label(text="Range Selection Mode Active", icon="INFO")
+            help_box.label(
+                text=bpy.app.translations.pgettext("Range Selection Mode Active"),
+                icon="INFO",
+            )
             if _range_selection_state["last_clicked_index"] >= 0:
-                help_box.label(text="Click another checkbox to select range")
+                help_box.label(
+                    text=bpy.app.translations.pgettext(
+                        "Click another checkbox to select range"
+                    )
+                )
             else:
-                help_box.label(text="Click a checkbox to start range selection")
+                help_box.label(
+                    text=bpy.app.translations.pgettext(
+                        "Click a checkbox to start range selection"
+                    )
+                )
 
         # Options
         row = layout.row()
@@ -655,7 +684,10 @@ class VIEW3D_PT_vertex_group_merger(Panel):
         # Merge button
         row = layout.row()
         row.scale_y = 1.5
-        row.operator("mesh.merge_vertex_groups", text="Merge Selected Groups")
+        row.operator(
+            "mesh.merge_vertex_groups",
+            text=bpy.app.translations.pgettext("Merge Selected Groups"),
+        )
         row.enabled = bool(settings.target_group)
 
         # Toggle weight paint mode button
@@ -663,7 +695,10 @@ class VIEW3D_PT_vertex_group_merger(Panel):
             return
 
         row = layout.row()
-        row.operator("paint.weight_paint_toggle", text="Switch to Weight Paint Mode")
+        row.operator(
+            "paint.weight_paint_toggle",
+            text=bpy.app.translations.pgettext("Switch to Weight Paint Mode"),
+        )
 
 
 def target_group_update(self, context) -> None:
@@ -698,6 +733,9 @@ classes: List[Any] = [
 
 
 def register() -> None:
+    # Register translations
+    bpy.app.translations.register(__name__, translations_dict)
+
     for cls in classes:
         bpy.utils.register_class(cls)
 
@@ -722,6 +760,9 @@ def register() -> None:
 
 
 def unregister() -> None:
+    # Unregister translations
+    bpy.app.translations.unregister(__name__)
+
     del bpy.types.Scene.vertex_group_merger
 
     for cls in reversed(classes):
