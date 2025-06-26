@@ -21,7 +21,7 @@ jobs:
       - name: Create addon ZIP
         run: |
           mkdir -p dist/vertex-group-merger
-          cp -r __init__.py LICENSE* README* dist/vertex-group-merger/
+          cp -r __init__.py translations.py LICENSE* README* dist/vertex-group-merger/
           cd dist
           zip -r "vertex-group-merger_${{ steps.version.outputs.VERSION }}.zip" vertex-group-merger/ \
             -x "**/__pycache__/**" \
