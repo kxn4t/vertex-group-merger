@@ -1,6 +1,7 @@
 import bpy
 from bpy.props import (
     BoolProperty,
+    IntProperty,
     StringProperty,
     CollectionProperty,
     PointerProperty,
@@ -29,6 +30,7 @@ _range_selection_state = {
 # Tracking for UI updates
 _last_object_id = None
 _last_target_group = ""
+_last_vg_names = ()
 
 
 class MESH_OT_merge_vertex_groups(Operator):
@@ -57,20 +59,19 @@ class MESH_OT_merge_vertex_groups(Operator):
             )
             return {"CANCELLED"}
 
-        # Get source groups
-        source_group_names: List[str] = [
-            group.name for group in settings.source_groups if group.use
+        # Get source groups (re-resolve, exclude missing groups and target)
+        source_groups: List[VertexGroup] = [
+            g
+            for name in (item.name for item in settings.source_groups if item.use)
+            if (g := obj.vertex_groups.get(name)) is not None
+            and name != target_group_name
         ]
 
-        if not source_group_names:
+        if not source_groups:
             self.report(
                 {"ERROR"}, bpy.app.translations.pgettext("No source groups selected")
             )
             return {"CANCELLED"}
-
-        source_groups: List[VertexGroup] = [
-            obj.vertex_groups.get(name) for name in source_group_names
-        ]
 
         # Perform merge operation
         self.merge_vertex_groups(
@@ -97,10 +98,11 @@ class MESH_OT_merge_vertex_groups(Operator):
 
         # Reset range selection mode after merge operation using timer
         if settings.range_selection_mode:
+            scene = context.scene
 
             def reset_range_mode_after_merge():
                 global _range_selection_state
-                context.scene.vertex_group_merger.range_selection_mode = False
+                scene.vertex_group_merger.range_selection_mode = False
                 _range_selection_state["last_clicked_index"] = -1
                 return None
 
@@ -128,18 +130,9 @@ class MESH_OT_merge_vertex_groups(Operator):
             keep_source_groups: Flag to keep source groups after merging
             operation_mode: 'ADD' or 'SUBTRACT' operation mode
         """
-        # Pre-compute set of vertices to process
-        vertices_to_process: Set[int] = self._collect_vertices_to_process(
-            obj, source_groups, target_group
-        )
-
-        # Calculate weights for each vertex
+        # Calculate merged weights in a single pass using vertex.groups
         vertex_weights: Dict[int, float] = self._calculate_vertex_weights(
-            vertices_to_process,
-            source_groups,
-            target_group,
-            maintain_total_weight,
-            operation_mode,
+            obj, source_groups, target_group, maintain_total_weight, operation_mode
         )
 
         # Apply new weights to target group
@@ -177,67 +170,45 @@ class MESH_OT_merge_vertex_groups(Operator):
 
         self.report({"INFO"}, success_message)
 
-    def _collect_vertices_to_process(
-        self, obj: Object, source_groups: List[VertexGroup], target_group: VertexGroup
-    ) -> Set[int]:
-        """Collect vertices that need processing from all groups"""
-        vertices_to_process: Set[int] = set()
-
-        # Add vertices from target group
-        for v in obj.data.vertices:
-            try:
-                target_group.weight(v.index)
-                vertices_to_process.add(v.index)
-            except RuntimeError:
-                pass
-
-        # Add vertices from source groups
-        for source_group in source_groups:
-            for v in obj.data.vertices:
-                try:
-                    source_group.weight(v.index)
-                    vertices_to_process.add(v.index)
-                except RuntimeError:
-                    pass
-
-        return vertices_to_process
-
     def _calculate_vertex_weights(
         self,
-        vertices_to_process: Set[int],
+        obj: Object,
         source_groups: List[VertexGroup],
         target_group: VertexGroup,
         maintain_total_weight: bool,
         operation_mode: str,
     ) -> Dict[int, float]:
-        """Calculate new weights for vertices"""
+        """Collect relevant vertices and calculate merged weights in a single pass"""
+        target_idx: int = target_group.index
+        source_indices: Set[int] = {g.index for g in source_groups}
         vertex_weights: Dict[int, float] = {}
 
-        for vertex_index in vertices_to_process:
-            # Start with target weight (0.0 if not in target group)
-            weight: float = 0.0
-            try:
-                weight = target_group.weight(vertex_index)
-            except RuntimeError:
-                pass
+        for v in obj.data.vertices:
+            target_weight: float = 0.0
+            source_sum: float = 0.0
+            relevant: bool = False
 
-            # Add or subtract weights from source groups based on operation mode
-            for source_group in source_groups:
-                try:
-                    source_weight = source_group.weight(vertex_index)
-                    if operation_mode == "ADD":
-                        weight += source_weight
-                    elif operation_mode == "SUBTRACT":
-                        weight -= source_weight
-                except RuntimeError:
-                    pass
+            for g in v.groups:
+                if g.group == target_idx:
+                    target_weight = g.weight
+                    relevant = True
+                elif g.group in source_indices:
+                    source_sum += g.weight
+                    relevant = True
 
-            # Ensure weight is within valid range
+            if not relevant:
+                continue
+
+            if operation_mode == "ADD":
+                weight = target_weight + source_sum
+            else:  # SUBTRACT
+                weight = target_weight - source_sum
+
             weight = max(0.0, weight)
             if maintain_total_weight and weight > 1.0:
                 weight = 1.0
 
-            vertex_weights[vertex_index] = weight
+            vertex_weights[v.index] = weight
 
         return vertex_weights
 
@@ -278,6 +249,7 @@ class VertexGroupItem(PropertyGroup):
     """Source vertex group item"""
 
     name: StringProperty(name="Name", default="")
+    # Redefined in register() with update callback
     use: BoolProperty(name="Use", default=False)
 
 
@@ -327,8 +299,8 @@ class MESH_OT_apply_range_selection(Operator):
     bl_label = "Apply Range Selection"
     bl_options = {"REGISTER", "UNDO", "INTERNAL"}
 
-    start_index: bpy.props.IntProperty()
-    end_index: bpy.props.IntProperty()
+    start_index: IntProperty()
+    end_index: IntProperty()
     target_state: BoolProperty()
 
     def execute(self, context) -> Set[str]:
@@ -404,13 +376,13 @@ def item_use_update(self, context) -> None:
     """Update standard list when checkbox is changed - extended for range selection"""
     obj: Optional[Object] = context.active_object
     if not obj or obj.type != "MESH":
-        return None
+        return
 
     settings = context.scene.vertex_group_merger
 
     # Skip if we're currently updating range to prevent recursion
     if getattr(settings, "updating_range", False):
-        return None
+        return
 
     # Normal processing
     if self.use:
@@ -422,8 +394,6 @@ def item_use_update(self, context) -> None:
     # Range selection mode additional processing
     if settings.range_selection_mode:
         handle_range_selection(self, context)
-
-    return None
 
 
 def active_source_index_update(self, context) -> None:
@@ -451,8 +421,9 @@ class VertexGroupMergerSettings(PropertyGroup):
     """Vertex Group Merger Settings"""
 
     source_groups: CollectionProperty(type=VertexGroupItem)
-    active_source_index: bpy.props.IntProperty(update=active_source_index_update)
+    active_source_index: IntProperty(update=active_source_index_update)
 
+    # Redefined in register() with update callback
     target_group: StringProperty(
         name="Target Group",
         description="Selected groups will be merged into this group",
@@ -493,12 +464,6 @@ class VertexGroupMergerSettings(PropertyGroup):
         update=lambda self, context: range_selection_mode_update(self, context),
     )
 
-    last_clicked_index: bpy.props.IntProperty(
-        name="Last Clicked Index",
-        description="Index of the last clicked checkbox",
-        default=-1,
-    )
-
     updating_range: BoolProperty(
         name="Updating Range",
         description="Flag to prevent callback recursion during range updates",
@@ -514,25 +479,27 @@ def update_source_groups(self, context) -> None:
 
     settings = context.scene.vertex_group_merger
 
-    # Clear existing list
-    settings.source_groups.clear()
+    # Suppress item_use_update callbacks during list rebuild
+    # Without this, each item.use = False triggers handle_range_selection
+    # in range selection mode, leaving the last group as the selection anchor
+    settings.updating_range = True
+    try:
+        settings.source_groups.clear()
 
-    # Reset range selection state when list is updated
-    settings.last_clicked_index = -1
+        for vg in obj.vertex_groups:
+            if vg.name == settings.target_group:
+                continue
 
-    # Add all vertex groups except current target to the list
-    for vg in obj.vertex_groups:
-        if vg.name == settings.target_group:
-            continue
-
-        item = settings.source_groups.add()
-        item.name = vg.name
-        item.use = False
+            item = settings.source_groups.add()
+            item.name = vg.name
+            item.use = False
+    finally:
+        settings.updating_range = False
 
 
 def needs_update(context) -> bool:
     """Simple check if source groups list needs updating"""
-    global _last_object_id, _last_target_group
+    global _last_object_id, _last_target_group, _last_vg_names
 
     obj = context.active_object
     if not obj or obj.type != "MESH":
@@ -540,16 +507,19 @@ def needs_update(context) -> bool:
 
     settings = context.scene.vertex_group_merger
 
-    # Check if object or target group changed
-    current_object_id = id(obj)
+    # Check if object, target group, or vertex group composition changed
+    current_object_id = obj.as_pointer()
     current_target_group = settings.target_group
+    current_vg_names = tuple(vg.name for vg in obj.vertex_groups)
 
     if (
         _last_object_id != current_object_id
         or _last_target_group != current_target_group
+        or _last_vg_names != current_vg_names
     ):
         _last_object_id = current_object_id
         _last_target_group = current_target_group
+        _last_vg_names = current_vg_names
         return True
 
     return False
@@ -607,9 +577,10 @@ class VIEW3D_PT_vertex_group_merger(Panel):
 
             # Reset range selection mode when object changes using timer
             if settings.range_selection_mode:
+                scene = context.scene
 
                 def reset_range_mode():
-                    context.scene.vertex_group_merger.range_selection_mode = False
+                    scene.vertex_group_merger.range_selection_mode = False
                     return None
 
                 bpy.app.timers.register(reset_range_mode, first_interval=0.01)
