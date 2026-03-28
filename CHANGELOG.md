@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Disable merge button in Edit Mode to prevent errors
 - Fix error when merging after vertex groups are externally deleted or renamed
 - Fix source groups list not updating when vertex groups are added, deleted, or renamed on the same object
 - Fix last vertex group being incorrectly highlighted when changing target group while in range selection mode
@@ -26,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 修正
 
+- 編集モード中にマージボタンを無効化し、エラーを防止
 - 頂点グループが外部で削除・リネームされた後にマージするとエラーになる問題を修正
 - 同一オブジェクト上で頂点グループを追加・削除・リネームしてもソースグループ一覧が更新されない問題を修正
 - 範囲選択モード中にマージ先グループを変更すると、最後の頂点グループが選択状態になる問題を修正
