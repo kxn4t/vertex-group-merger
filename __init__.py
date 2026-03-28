@@ -330,12 +330,59 @@ class MESH_OT_apply_range_selection(Operator):
         return {"FINISHED"}
 
 
+def generate_vertex_group_name(obj) -> str:
+    """Generate a default vertex group name following Blender's naming convention."""
+    base = "Group"
+    names = {vg.name for vg in obj.vertex_groups}
+    if base not in names:
+        return base
+    i = 1
+    while f"{base}.{i:03d}" in names:
+        i += 1
+    return f"{base}.{i:03d}"
+
+
+class MESH_OT_add_target_vertex_group(Operator):
+    """Add a new vertex group and set it as the merge target"""
+
+    bl_idname = "mesh.add_target_vertex_group"
+    bl_label = "Add Target Vertex Group"
+    bl_options = {"REGISTER", "UNDO"}
+
+    group_name: StringProperty(
+        name="Name",
+        description="Name of the new vertex group",
+        default="",
+    )
+
+    @classmethod
+    def poll(cls, context) -> bool:
+        obj = context.active_object
+        return obj is not None and obj.type == "MESH"
+
+    def invoke(self, context, event) -> Set[str]:
+        self.group_name = generate_vertex_group_name(context.active_object)
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context) -> Set[str]:
+        obj = context.active_object
+        settings = context.scene.vertex_group_merger
+
+        name = self.group_name.strip()
+        if not name:
+            name = generate_vertex_group_name(obj)
+        vg = obj.vertex_groups.new(name=name)
+        settings.target_group = vg.name
+
+        return {"FINISHED"}
+
+
 class MESH_OT_update_source_groups_list(Operator):
     """Update source groups list safely"""
 
     bl_idname = "mesh.update_source_groups_list"
     bl_label = "Update Source Groups List"
-    bl_options = {"REGISTER", "UNDO", "INTERNAL"}
+    bl_options = {"INTERNAL"}
 
     def execute(self, context) -> Set[str]:
         # Reset range selection state and update source groups list
@@ -593,7 +640,7 @@ class VIEW3D_PT_vertex_group_merger(Panel):
                 bpy.app.timers.register(reset_range_mode, first_interval=0.01)
 
         # Target group selection
-        row = layout.row()
+        row = layout.row(align=True)
         row.prop_search(
             settings,
             "target_group",
@@ -601,6 +648,7 @@ class VIEW3D_PT_vertex_group_merger(Panel):
             "vertex_groups",
             text=bpy.app.translations.pgettext("Target Group"),
         )
+        row.operator("mesh.add_target_vertex_group", text="", icon="ADD")
 
         # Operation mode selection
         row = layout.row()
@@ -704,6 +752,7 @@ classes: List[Any] = [
     MESH_UL_merge_source_groups,
     MESH_OT_update_source_groups_list,
     MESH_OT_apply_range_selection,
+    MESH_OT_add_target_vertex_group,
     VertexGroupMergerSettings,
     MESH_OT_merge_vertex_groups,
     VIEW3D_PT_vertex_group_merger,

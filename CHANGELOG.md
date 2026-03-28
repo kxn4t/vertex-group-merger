@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add "+" button next to target group selector to create a new vertex group directly from the panel
+
 ### Fixed
 
 - Disable merge button in Edit Mode to prevent errors
@@ -24,6 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improve merge performance for meshes with many vertices
 - Improve internal stability of object tracking and timer handling
 - Remove near-zero weights (< 0.000001) after subtraction to keep vertex groups clean
+
+### 追加
+
+- マージ先グループの横に「+」ボタンを追加し、パネルから直接新しい頂点グループを作成可能に
 
 ### 修正
 

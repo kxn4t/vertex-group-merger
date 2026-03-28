@@ -35,6 +35,11 @@ translations_dict = {
         # Error messages
         ("*", "Target group not found"): "マージ先グループが見つかりません",
         ("*", "No source groups selected"): "マージ元グループが選択されていません",
+        # Add target vertex group operator
+        ("*", "Add a new vertex group and set it as the merge target"): "新しい頂点グループを追加してマージ先に設定",
+        ("*", "Add Target Vertex Group"): "マージ先頂点グループを追加",
+        ("Operator", "Add Target Vertex Group"): "マージ先頂点グループを追加",
+        ("*", "Name of the new vertex group"): "新しい頂点グループの名前",
         
         # Success messages (complete sentences with placeholders)
         ("*", "Groups {source} merged into {target}"): "{source}を{target}にマージしました",
