@@ -46,7 +46,7 @@ class MESH_OT_merge_vertex_groups(Operator):
         return (
             obj
             and obj.type == "MESH"
-            and obj.mode != "EDIT_MESH"
+            and obj.mode != "EDIT"
             and len(obj.vertex_groups) > 1
         )
 
