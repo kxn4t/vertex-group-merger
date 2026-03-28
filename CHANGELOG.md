@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Improve merge performance for meshes with many vertices
 - Improve internal stability of object tracking and timer handling
+- Remove near-zero weights (< 0.000001) after subtraction to keep vertex groups clean
 
 ### 修正
 
@@ -33,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - 頂点数の多いメッシュでのマージ性能を改善
 - オブジェクト追跡とタイマー処理の内部安定性を向上
+- 減算時にゼロに近い微小ウェイト（0.000001未満）を自動削除し、頂点グループをクリーンに保つように
 
 ## [0.4.0] - 2025-06-26
 
