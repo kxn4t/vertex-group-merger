@@ -43,7 +43,12 @@ class MESH_OT_merge_vertex_groups(Operator):
     @classmethod
     def poll(cls, context) -> bool:
         obj = context.active_object
-        return obj and obj.type == "MESH" and len(obj.vertex_groups) > 1
+        return (
+            obj
+            and obj.type == "MESH"
+            and obj.mode != "EDIT_MESH"
+            and len(obj.vertex_groups) > 1
+        )
 
     def execute(self, context) -> Set[str]:
         obj: Object = context.active_object
