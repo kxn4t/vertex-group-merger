@@ -205,6 +205,8 @@ class MESH_OT_merge_vertex_groups(Operator):
                 weight = target_weight - source_sum
 
             weight = max(0.0, weight)
+            if operation_mode == "SUBTRACT" and weight < 1e-6:
+                weight = 0.0
             if maintain_total_weight and weight > 1.0:
                 weight = 1.0
 
