@@ -11,16 +11,6 @@ from bpy.types import Operator, Panel, PropertyGroup, UIList, Object, VertexGrou
 from typing import List, Dict, Set, Optional, Any
 from .translations import translations_dict
 
-bl_info = {
-    "name": "Vertex Group Merger",
-    "author": "kxn4t",
-    "version": (0, 5, 0),
-    "blender": (3, 6, 0),
-    "location": "View3D > Edit Panel > Vertex Group Merger",
-    "description": "Merge multiple vertex groups into a target group",
-    "category": "Mesh",
-}
-
 # Global state for range selection to avoid Blender's property modification restrictions
 _range_selection_state = {
     "last_clicked_index": -1,
@@ -761,7 +751,7 @@ classes: List[Any] = [
 
 def register() -> None:
     # Register translations
-    bpy.app.translations.register(__name__, translations_dict)
+    bpy.app.translations.register(__package__, translations_dict)
 
     for cls in classes:
         bpy.utils.register_class(cls)
@@ -788,7 +778,7 @@ def register() -> None:
 
 def unregister() -> None:
     # Unregister translations
-    bpy.app.translations.unregister(__name__)
+    bpy.app.translations.unregister(__package__)
 
     del bpy.types.Scene.vertex_group_merger
 
