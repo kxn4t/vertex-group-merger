@@ -47,13 +47,15 @@ Range Selection Mode allows you to efficiently select multiple vertex groups at 
 - **After Merge**: Range Selection Mode is automatically disabled after completing a merge operation
 
 ## Requirements
-Blender 3.6.0 or higher
+Blender 4.2.0 or higher
+
+> **Note:** For Blender 3.6–4.1, please use [v0.5.0](https://github.com/kxn4t/vertex-group-merger/releases/tag/v0.5.0) (final legacy version).
 
 ## Installation
-1. Open Blender's "Edit" → "Preferences" → "Add-ons"
-2. Click the "Install" button
-3. Select the downloaded `vertex_group_merger.zip`
-4. Enable "Vertex Group Merger" in the addon list
+1. Open Blender's "Edit" → "Preferences" → "Get Extensions"
+2. Open "Repositories" → click "+" → "Add Remote Repository"
+3. Enter the URL: `https://kxn4t.github.io/blender-extensions/index.json`
+4. Search for "Vertex Group Merger" and install
 
 ## License
 GPL v3 License (see LICENSE). Free for both personal and commercial use.

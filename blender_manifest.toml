@@ -1,0 +1,11 @@
+schema_version = "1.0.0"
+id = "vertex_group_merger"
+version = "0.6.0"
+name = "Vertex Group Merger"
+tagline = "Merge multiple vertex groups into a target group"
+maintainer = "kxn4t"
+type = "add-on"
+blender_version_min = "4.2.0"
+website = "https://github.com/kxn4t/vertex-group-merger"
+license = ["SPDX:GPL-3.0-or-later"]
+tags = ["Mesh", "Rigging"]
